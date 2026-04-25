@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    ports:
+      - "8000:5000"
+    volumes:
+      - data-volume:/app/data
+    environment:
+      - DATABASE_PATH=/app/data/finance.db
+      - FLASK_APP=app.py
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  data-volume:
