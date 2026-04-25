@@ -1,19 +1,29 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Transaction, Category, Summary } from '@/types'
+import { Transaction, Category, Summary, BudgetResponse, CategoryBudget } from '@/types'
 
 const API_BASE = '/api'
+
+function formatMoney(amount: number): string {
+  return `¥${amount.toFixed(2)}`
+}
 
 export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [summary, setSummary] = useState<Summary>({ income: 0, expense: 0, balance: 0 })
+  const [summary, setSummary] = useState<Summary>({
+    income: 0, income_cents: 0,
+    expense: 0, expense_cents: 0,
+    balance: 0, balance_cents: 0
+  })
+  const [budget, setBudget] = useState<BudgetResponse | null>(null)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const [newCategoryType, setNewCategoryType] = useState<'income' | 'expense'>('expense')
 
   const year = currentDate.getFullYear()
@@ -22,19 +32,25 @@ export default function Home() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [transactionsRes, categoriesRes, summaryRes] = await Promise.all([
+      const [transactionsRes, categoriesRes, summaryRes, budgetRes] = await Promise.all([
         fetch(`${API_BASE}/transactions?year=${year}&month=${month}`),
         fetch(`${API_BASE}/categories`),
         fetch(`${API_BASE}/transactions/summary?year=${year}&month=${month}`),
+        fetch(`${API_BASE}/budgets?year=${year}&month=${month}`),
       ])
       
       const transactionsData = await transactionsRes.json()
       const categoriesData = await categoriesRes.json()
       const summaryData = await summaryRes.json()
+      const budgetData = await budgetRes.json()
       
-      setTransactions(transactionsData)
+      setTransactions(Array.isArray(transactionsData) ? transactionsData : [])
       setCategories(categoriesData)
       setSummary(summaryData)
+      setBudget(budgetData)
+      
+      const allMonthKey = `${year}-${String(month).padStart(2, '0')}`
+      setExpandedMonths(new Set([allMonthKey]))
     } catch (error) {
       console.error('Failed to fetch data:', error)
     } finally {
@@ -54,8 +70,51 @@ export default function Home() {
     })
   }
 
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(monthKey)) {
+        newSet.delete(monthKey)
+      } else {
+        newSet.add(monthKey)
+      }
+      return newSet
+    })
+  }
+
   const incomeCategories = categories.filter(c => c.type === 'income')
   const expenseCategories = categories.filter(c => c.type === 'expense')
+
+  const getCategoryBudget = (categoryId: number): CategoryBudget | undefined => {
+    return budget?.categories.find(c => c.category_id === categoryId)
+  }
+
+  const groupTransactionsByMonth = () => {
+    const groups: { [key: string]: Transaction[] } = {}
+    transactions.forEach(t => {
+      const monthKey = t.date.substring(0, 7)
+      if (!groups[monthKey]) {
+        groups[monthKey] = []
+      }
+      groups[monthKey].push(t)
+    })
+    return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))
+  }
+
+  const getMonthSummary = (monthTransactions: Transaction[]) => {
+    const income = monthTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0)
+    const expense = monthTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0)
+    return { income, expense, balance: income - expense }
+  }
+
+  const formatMonthLabel = (monthKey: string) => {
+    const [y, m] = monthKey.split('-')
+    return `${y}年${parseInt(m)}月`
+  }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -78,17 +137,44 @@ export default function Home() {
           </button>
         </div>
 
+        {budget && budget.total.total_budget_cents > 0 && (
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">本月预算</span>
+              <span className={`text-sm font-medium ${
+                budget.total.is_over_total_budget ? 'text-red-600' : 'text-gray-700'
+              }`}>
+                {formatMoney(budget.total.total_spent)} / {formatMoney(budget.total.total_budget)}
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div
+                className={`h-3 rounded-full transition-all duration-500 ${
+                  budget.total.is_over_total_budget ? 'bg-red-500' : 'bg-blue-500'
+                }`}
+                style={{
+                  width: `${Math.min(budget.total.total_percentage, 100)}%`,
+                }}
+              />
+            </div>
+            <div className="flex justify-between mt-1 text-xs text-gray-500">
+              <span>剩余: {formatMoney(budget.total.total_remaining)}</span>
+              <span>{budget.total.total_percentage.toFixed(1)}%</span>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="text-sm text-gray-500 mb-1">总收入</div>
             <div className="text-2xl font-bold text-income">
-              ¥{summary.income.toFixed(2)}
+              {formatMoney(summary.income)}
             </div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
             <div className="text-sm text-gray-500 mb-1">总支出</div>
             <div className="text-2xl font-bold text-expense">
-              ¥{summary.expense.toFixed(2)}
+              {formatMoney(summary.expense)}
             </div>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
@@ -96,7 +182,7 @@ export default function Home() {
             <div className={`text-2xl font-bold ${
               summary.balance >= 0 ? 'text-income' : 'text-expense'
             }`}>
-              ¥{summary.balance.toFixed(2)}
+              {formatMoney(summary.balance)}
             </div>
           </div>
         </div>
@@ -127,63 +213,110 @@ export default function Home() {
           <p className="text-gray-500">暂无记录，点击"添加记录"开始记账</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="divide-y">
-            {transactions.map(transaction => (
-              <div
-                key={transaction.id}
-                className="p-4 hover:bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
-                  }`}>
-                    <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
-                      {transaction.type === 'income' ? '+' : '-'}
+        <div className="space-y-4">
+          {groupTransactionsByMonth().map(([monthKey, monthTransactions]) => {
+            const monthSummary = getMonthSummary(monthTransactions)
+            const isExpanded = expandedMonths.has(monthKey)
+            
+            return (
+              <div key={monthKey} className="bg-white rounded-lg shadow overflow-hidden">
+                <div
+                  className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors flex justify-between items-center"
+                  onClick={() => toggleMonth(monthKey)}
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-lg transform transition-transform duration-200">
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
+                    <span className="font-semibold text-gray-800">{formatMonthLabel(monthKey)}</span>
+                    <span className="text-sm text-gray-500">({monthTransactions.length}笔)</span>
+                  </div>
+                  <div className="flex items-center space-x-4 text-sm">
+                    <span className="text-income">收入 {formatMoney(monthSummary.income)}</span>
+                    <span className="text-expense">支出 {formatMoney(monthSummary.expense)}</span>
+                    <span className={monthSummary.balance >= 0 ? 'text-income' : 'text-expense'}>
+                      结余 {formatMoney(monthSummary.balance)}
                     </span>
                   </div>
-                  <div>
-                    <div className="font-medium">{transaction.category_name}</div>
-                    <div className="text-sm text-gray-500">
-                      {transaction.date}
-                      {transaction.note && ` · ${transaction.note}`}
-                    </div>
-                  </div>
                 </div>
-                <div className="flex items-center space-x-4 mt-2 sm:mt-0">
-                  <div className={`font-semibold ${
-                    transaction.type === 'income' ? 'text-income' : 'text-expense'
-                  }`}>
-                    {transaction.type === 'income' ? '+' : '-'}¥{transaction.amount.toFixed(2)}
+                
+                {isExpanded && (
+                  <div className="divide-y">
+                    {monthTransactions.map(transaction => {
+                      const catBudget = transaction.type === 'expense' 
+                        ? getCategoryBudget(transaction.category_id)
+                        : undefined
+                      const isOverBudget = catBudget?.is_over_budget
+                      
+                      return (
+                        <div
+                          key={transaction.id}
+                          className={`p-4 hover:bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between transition-colors ${
+                            isOverBudget ? 'bg-red-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                              transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
+                            }`}>
+                              <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
+                                {transaction.type === 'income' ? '+' : '-'}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-medium flex items-center">
+                                {transaction.category_name}
+                                {isOverBudget && (
+                                  <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                                    超预算
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {transaction.date}
+                                {transaction.note && ` · ${transaction.note}`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-4 mt-2 sm:mt-0">
+                            <div className={`font-semibold ${
+                              transaction.type === 'income' ? 'text-income' : 'text-expense'
+                            }`}>
+                              {transaction.type === 'income' ? '+' : '-'}{formatMoney(transaction.amount)}
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => {
+                                  setEditingTransaction(transaction)
+                                  setShowAddModal(true)
+                                }}
+                                className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
+                              >
+                                编辑
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm('确定要删除这条记录吗？')) {
+                                    await fetch(`${API_BASE}/transactions/${transaction.id}`, {
+                                      method: 'DELETE',
+                                    })
+                                    fetchData()
+                                  }
+                                }}
+                                className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded"
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => {
-                        setEditingTransaction(transaction)
-                        setShowAddModal(true)
-                      }}
-                      className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (confirm('确定要删除这条记录吗？')) {
-                          await fetch(`${API_BASE}/transactions/${transaction.id}`, {
-                            method: 'DELETE',
-                          })
-                          fetchData()
-                        }
-                      }}
-                      className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
+            )
+          })}
         </div>
       )}
 

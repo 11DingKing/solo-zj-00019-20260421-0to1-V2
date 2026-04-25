@@ -18,3 +18,12 @@ body {
     rgb(var(--background-start-rgb));
   min-height: 100vh;
 }
+
+@layer utilities {
+  .text-income {
+    color: #10b981;
+  }
+  .text-expense {
+    color: #ef4444;
+  }
+}

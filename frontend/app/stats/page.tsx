@@ -14,8 +14,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  BarChart,
-  Bar,
 } from 'recharts'
 
 const API_BASE = '/api'
@@ -25,6 +23,10 @@ const COLORS = [
   '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
   '#14b8a6', '#e11d48', '#0ea5e9', '#a855f7',
 ]
+
+function formatMoney(amount: number): string {
+  return `¥${amount.toFixed(2)}`
+}
 
 export default function StatsPage() {
   const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([])
@@ -77,6 +79,8 @@ export default function StatsPage() {
   const pieData = categoryStats.map((item, index) => ({
     name: item.category,
     value: item.amount,
+    category_id: item.category_id,
+    percentage: item.percentage,
     fill: COLORS[index % COLORS.length],
   }))
 
@@ -100,7 +104,7 @@ export default function StatsPage() {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-medium text-gray-800">{data.name}</p>
-          <p className="text-gray-600">{`金额: ¥${data.value.toFixed(2)}`}</p>
+          <p className="text-gray-600">{`金额: ${formatMoney(data.value)}`}</p>
           <p className="text-gray-600">{`占比: ${percentage}%`}</p>
         </div>
       )
@@ -115,7 +119,7 @@ export default function StatsPage() {
           <p className="font-medium text-gray-800 mb-1">{label}</p>
           {payload.map((entry: any, index: number) => (
             <p key={index} style={{ color: entry.color }}>
-              {`${entry.name}: ¥${entry.value.toFixed(2)}`}
+              {`${entry.name}: ${formatMoney(entry.value)}`}
             </p>
           ))}
         </div>
@@ -200,7 +204,7 @@ export default function StatsPage() {
             <div className="h-80 flex items-center justify-center">
               <div className="text-center">
                 <div className="text-6xl mb-4">📊</div>
-                <p className="text-gray-500">暂无支出数据</p>
+                <p className="text-gray-500 font-medium">本月暂无记录</p>
                 <p className="text-sm text-gray-400 mt-1">添加支出记录后这里会显示饼图</p>
               </div>
             </div>
@@ -245,11 +249,11 @@ export default function StatsPage() {
 
         <div className="bg-white rounded-xl shadow-lg p-6">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">近6个月收支趋势</h3>
-          {lineChartData.length === 0 ? (
+          {lineChartData.every(d => d.收入 === 0 && d.支出 === 0) ? (
             <div className="h-80 flex items-center justify-center">
               <div className="text-center">
                 <div className="text-6xl mb-4">📈</div>
-                <p className="text-gray-500">暂无趋势数据</p>
+                <p className="text-gray-500 font-medium">暂无趋势数据</p>
                 <p className="text-sm text-gray-400 mt-1">添加多月份记录后这里会显示折线图</p>
               </div>
             </div>
@@ -306,7 +310,7 @@ export default function StatsPage() {
           <h3 className="text-lg font-semibold text-gray-800 mb-4">本月支出明细</h3>
           {categoryStats.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-500">暂无支出数据</p>
+              <p className="text-gray-500">本月暂无记录</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -337,7 +341,7 @@ export default function StatsPage() {
                           </td>
                           <td className="py-4 px-4 text-right">
                             <span className="font-semibold text-gray-800">
-                              ¥{stat.amount.toFixed(2)}
+                              {formatMoney(stat.amount)}
                             </span>
                           </td>
                           <td className="py-4 px-4 text-right">
@@ -363,7 +367,7 @@ export default function StatsPage() {
                     <td className="py-4 px-4 font-semibold text-gray-800">合计</td>
                     <td className="py-4 px-4 text-right">
                       <span className="text-lg font-bold text-red-600">
-                        ¥{totalAmount.toFixed(2)}
+                        {formatMoney(totalAmount)}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-right font-semibold text-gray-800">

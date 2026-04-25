@@ -26,14 +26,15 @@ export default function RootLayout({
                 <Link href="/" className="text-xl font-bold text-gray-800">
                   📒 个人记账本
                 </Link>
-                <div className="flex space-x-4">
+                <div className="flex space-x-2 sm:space-x-4">
                   <NavLink href="/">首页</NavLink>
                   <NavLink href="/stats">统计</NavLink>
+                  <NavLink href="/budget">预算</NavLink>
                 </div>
               </div>
             </div>
           </nav>
-          <main className="flex-1">
+          <main className="flex-1 bg-gray-50">
             {children}
           </main>
           <footer className="bg-gray-100 py-4 text-center text-gray-600 text-sm">
@@ -52,7 +53,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href}
-      className={`px-4 py-2 rounded-md font-medium transition-colors ${
+      className={`px-3 py-2 rounded-md font-medium transition-colors text-sm sm:text-base ${
         isActive
           ? 'bg-blue-500 text-white'
           : 'text-gray-600 hover:bg-gray-100'
