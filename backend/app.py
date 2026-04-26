@@ -64,11 +64,15 @@ def init_db():
         ]
         
         for cat in default_categories:
-            if not Category.query.filter_by(name=cat['name']).first():
-                category = Category(**cat)
-                db.session.add(category)
-        
-        db.session.commit()
+            try:
+                with db.session.no_autoflush:
+                    existing = Category.query.filter_by(name=cat['name']).first()
+                if not existing:
+                    category = Category(**cat)
+                    db.session.add(category)
+                    db.session.commit()
+            except Exception:
+                db.session.rollback()
 
 def migrate_amount_to_cents():
     with app.app_context():
@@ -561,9 +565,12 @@ def delete_budget(budget_id):
         db.session.commit()
         return jsonify({'message': '删除成功'})
 
-with app.app_context():
-    init_db()
-    migrate_amount_to_cents()
+try:
+    with app.app_context():
+        init_db()
+        migrate_amount_to_cents()
+except Exception as e:
+    print(f"Initialization warning (safe to ignore in multi-worker mode): {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))
