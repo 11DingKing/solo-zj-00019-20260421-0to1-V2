@@ -22,6 +22,7 @@ class Category(db.Model):
     is_default = db.Column(db.Boolean, default=False)
 
 class Transaction(db.Model):
+    __tablename__ = 'transactions'
     id = db.Column(db.Integer, primary_key=True)
     amount = db.Column(db.Integer, nullable=False)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=False)
@@ -32,6 +33,7 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Budget(db.Model):
+    __tablename__ = 'budgets'
     id = db.Column(db.Integer, primary_key=True)
     category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
     category = db.relationship('Category', backref='budgets')
@@ -72,17 +74,23 @@ def migrate_amount_to_cents():
     with app.app_context():
         try:
             from sqlalchemy import text
-            result = db.session.execute(text("PRAGMA table_info(transaction)")).fetchall()
-            columns = [row[1] for row in result]
             
-            if 'amount' in columns:
-                transactions = Transaction.query.all()
-                for t in transactions:
-                    if t.amount is not None and isinstance(t.amount, float):
-                        t.amount = int(round(t.amount * 100))
-                    elif t.amount is not None and isinstance(t.amount, int) and t.amount < 10000:
-                        pass
+            inspector = db.inspect(db.engine)
+            tables = inspector.get_table_names()
+            
+            if 'transaction' in tables and 'transactions' not in tables:
+                print("Migrating old 'transaction' table to 'transactions'...")
+                db.session.execute(text("ALTER TABLE transaction RENAME TO transactions"))
                 db.session.commit()
+            
+            if 'transactions' in tables:
+                columns = [c['name'] for c in inspector.get_columns('transactions')]
+                if 'amount' in columns:
+                    transactions = Transaction.query.all()
+                    for t in transactions:
+                        if t.amount is not None and isinstance(t.amount, float):
+                            t.amount = int(round(t.amount * 100))
+                    db.session.commit()
         except Exception as e:
             print(f"Migration skipped or error: {e}")
             db.session.rollback()
@@ -558,4 +566,5 @@ with app.app_context():
     migrate_amount_to_cents()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)
